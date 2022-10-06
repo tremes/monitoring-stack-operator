@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	coreosrhobs "github.com/rhobs/observability-operator/pkg/controllers/monitoring/coreos-rhobs"
 	stackctrl "github.com/rhobs/observability-operator/pkg/controllers/monitoring/monitoring-stack"
 	tqctrl "github.com/rhobs/observability-operator/pkg/controllers/monitoring/thanos-querier"
 
@@ -39,6 +40,10 @@ func New(metricsAddr, healthProbeAddr string) (*Operator, error) {
 
 	if err := tqctrl.RegisterWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("unable to register the thanos querier controller with the manager: %w", err)
+	}
+
+	if err := coreosrhobs.RegisterWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to register the CoreOS -> RHOBS controller: %w", err)
 	}
 
 	if err := mgr.AddHealthzCheck("health probe", healthz.Ping); err != nil {

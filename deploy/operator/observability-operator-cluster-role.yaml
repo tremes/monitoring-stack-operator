@@ -63,6 +63,13 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
+  - servicemonitors
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - monitoring.rhobs
+  resources:
   - alertmanagers
   - prometheuses
   - servicemonitors
