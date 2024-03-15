@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	stack "github.com/rhobs/observability-operator/pkg/apis/monitoring/v1alpha1"
+	"github.com/rhobs/observability-operator/pkg/status"
 )
 
 type resourceManager struct {
@@ -173,6 +174,7 @@ func (rm resourceManager) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 }
 
 func (rm resourceManager) updateStatus(ctx context.Context, req ctrl.Request, ms *stack.MonitoringStack, recError error) ctrl.Result {
+	var operands []status.Operand[monv1.Condition]
 	var prom monv1.Prometheus
 	logger := rm.logger.WithValues("stack", req.NamespacedName)
 	key := client.ObjectKey{
@@ -184,7 +186,30 @@ func (rm resourceManager) updateStatus(ctx context.Context, req ctrl.Request, ms
 		logger.Info("Failed to get prometheus object", "err", err)
 		return ctrl.Result{RequeueAfter: 2 * time.Second}
 	}
-	ms.Status.Conditions = updateConditions(ms, prom, recError)
+	promOperand := status.Operand[monv1.Condition]{
+		Conditions: prom.Status.Conditions,
+		Name:       prom.Kind,
+	}
+	operands = append(operands, promOperand)
+	if !ms.Spec.AlertmanagerConfig.Disabled {
+		var am monv1.Alertmanager
+		err := rm.k8sClient.Get(ctx, key, &am)
+		if err != nil {
+			logger.Info("Failed to get alertmanager object", "err", err)
+			return ctrl.Result{RequeueAfter: 2 * time.Second}
+		}
+		amOperand := status.Operand[monv1.Condition]{
+			Conditions: am.Status.Conditions,
+			Name:       am.Kind,
+		}
+		operands = append(operands, amOperand)
+	}
+
+	ms.Status.Conditions, err = status.UpdateConditions(ms, operands, recError)
+	if err != nil {
+		logger.Info("Failed to update status conditions", "err", err)
+		return ctrl.Result{RequeueAfter: 2 * time.Second}
+	}
 	err = rm.k8sClient.Status().Update(ctx, ms)
 	if err != nil {
 		logger.Info("Failed to update status", "err", err)
