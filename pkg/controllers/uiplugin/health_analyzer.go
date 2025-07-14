@@ -1,6 +1,8 @@
 package uiplugin
 
 import (
+	"fmt"
+
 	monv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -95,18 +97,16 @@ func newHealthAnalyzerService(namespace string) *corev1.Service {
 }
 
 func newHealthAnalyzerServiceMCP(namespace string) *corev1.Service {
+	serviceName := fmt.Sprintf("%s-mcp", name)
 	service := &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: corev1.SchemeGroupVersion.String(),
 			Kind:       "Service",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name + "-mcp",
+			Name:      serviceName,
 			Namespace: namespace,
-			Annotations: map[string]string{
-				"service.beta.openshift.io/serving-cert-secret-name": volumeMountName,
-			},
-			Labels: componentLabels(name),
+			Labels:    componentLabels(serviceName),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -192,7 +192,7 @@ func newHealthAnalyzerDeployment(namespace string, serviceAccountName string, pl
 							},
 						},
 						{
-							Name:            name + "mcp",
+							Name:            name + "-mcp",
 							Image:           pluginInfo.HealthAnalyzerImage,
 							ImagePullPolicy: corev1.PullAlways,
 							Args: []string{
