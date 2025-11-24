@@ -20,9 +20,9 @@ require (
 	github.com/prometheus/common v0.67.4
 	github.com/rhobs/obo-prometheus-operator v0.87.0-rhobs1
 	github.com/rhobs/obo-prometheus-operator/pkg/apis/monitoring v0.87.0-rhobs1
-	github.com/rhobs/observability-operator/pkg/apis v0.0.0-20251009091129-76135c924ed6
 	github.com/rhobs/perses v0.0.0-20260113083341-bce6f0039b5d
 	github.com/rhobs/perses-operator v0.1.10-0.20260119104604-801af29f7716
+	github.com/rhobs/observability-operator/pkg/apis v0.0.0-20260115120443-7527133cfea4
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.1
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93
