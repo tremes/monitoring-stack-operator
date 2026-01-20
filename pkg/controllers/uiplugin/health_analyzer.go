@@ -2,8 +2,21 @@ package uiplugin
 
 import (
 	_ "embed"
+	"encoding/json"
+	"fmt"
+	"time"
 
+	"github.com/perses/perses/go-sdk/common"
+	"github.com/perses/perses/go-sdk/dashboard"
+	"github.com/perses/perses/go-sdk/panel"
+	panelgroup "github.com/perses/perses/go-sdk/panel-group"
+	listvariable "github.com/perses/perses/go-sdk/variable/list-variable"
+	"github.com/perses/plugins/prometheus/sdk/go/query"
+	labelvalues "github.com/perses/plugins/prometheus/sdk/go/variable/label-values"
+	table "github.com/perses/plugins/table/sdk/go"
 	monv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	persesv1alpha2 "github.com/rhobs/perses-operator/api/v1alpha2"
+	persesv1 "github.com/rhobs/perses/pkg/model/api/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
@@ -242,6 +255,206 @@ func newHealthAnalyzerServiceMonitor(namespace string) *monv1.ServiceMonitor {
 	}
 
 	return serviceMonitor
+}
+
+func withComponentsOverviewPanel() dashboard.Option {
+	return dashboard.AddPanelGroup("Component Health Overview",
+		panelgroup.PanelsPerLine(1),
+		panelgroup.AddPanel("Top level components",
+			table.Table(
+				table.WithCellSettings([]table.CellSettings{
+					{
+						Condition: table.Condition{
+							Kind: "Value",
+							Spec: map[string]interface{}{
+								"value": "warning",
+							},
+						},
+						Text:      "WARNING",
+						TextColor: "#ffb700",
+					},
+					{
+						Condition: table.Condition{
+							Kind: "Value",
+							Spec: map[string]interface{}{
+								"value": "error",
+							},
+						},
+						Text:      "ERROR",
+						TextColor: "#ff0000",
+					},
+					{
+						Condition: table.Condition{
+							Kind: "Value",
+							Spec: map[string]interface{}{
+								"value": "OK",
+							},
+						},
+						Text:      "OK",
+						TextColor: "#23c200",
+					},
+				}),
+				table.WithColumnSettings([]table.ColumnSettings{
+					{
+						Name: "timestamp",
+						Hide: true,
+					},
+					{
+						Name: "value",
+						Hide: true,
+					},
+				}),
+				table.WithDensity("comfortable"),
+			),
+			panel.AddQuery(
+				query.PromQL(
+					"sum without(job,instance,container,endpoint,namespace,pod,prometheus,service) (component_health)",
+					query.SeriesNameFormat("{{component}}"),
+				),
+			),
+		),
+	)
+}
+
+func withComponentDetailsPanel() dashboard.Option {
+	return dashboard.AddPanelGroup("Component Details",
+		panelgroup.PanelsPerLine(1),
+		panelgroup.AddPanel("Component Details: ${component}",
+			table.Table(
+				table.Transform([]common.Transform{
+					{
+						Kind: common.MergeByColumnsKind,
+						Spec: common.MergeColumnsSpec{
+							Columns: []string{"name", "src_alertname"},
+							Name:    "name",
+						},
+					},
+				}),
+				table.WithCellSettings([]table.CellSettings{
+					{
+						Condition: table.Condition{
+							Kind: "Value",
+							Spec: map[string]interface{}{
+								"value": "warning",
+							},
+						},
+						Text:      "WARNING",
+						TextColor: "#ffb700",
+					},
+					{
+						Condition: table.Condition{
+							Kind: "Value",
+							Spec: map[string]interface{}{
+								"value": "error",
+							},
+						},
+						Text:      "ERROR",
+						TextColor: "#ff0000",
+					},
+					{
+						Condition: table.Condition{
+							Kind: "Value",
+							Spec: map[string]interface{}{
+								"value": "OK",
+							},
+						},
+						Text:      "OK",
+						TextColor: "#23c200",
+					},
+				}),
+				table.WithColumnSettings([]table.ColumnSettings{
+					{
+						Name: "timestamp",
+						Hide: true,
+					},
+					{
+						Name: "value",
+						Hide: true,
+					},
+					{
+						Name: "component",
+					},
+					{
+						Name: "name",
+					},
+					{
+						Name: "resource",
+					},
+					{
+						Name: "progressing",
+					},
+					{
+						Name: "status",
+					},
+				}),
+			),
+			panel.AddQuery(
+				query.PromQL(
+					"sum by(component,name,progressing,resource,status,src_alertname) (component_health_object{component=~\"${component}.*\"} or component_health_alert{component=~\"${component}.*\"})",
+				),
+			),
+		),
+	)
+}
+
+func buildComponentHealthDashboard() (dashboard.Builder, error) {
+	return dashboard.New("component-health-dashboard",
+		dashboard.Name("Component Health Dashboard"),
+		dashboard.Duration(time.Hour),
+		dashboard.RefreshInterval(30*time.Second),
+		dashboard.AddVariable("component",
+			listvariable.List(
+				listvariable.DisplayName("Component Filter"),
+				listvariable.Description("Select a component to view detailed health information. Use 'All Components' to see everything."),
+				listvariable.Hidden(false),
+				listvariable.DefaultValue("$__all"),
+				listvariable.AllowAllValue(true),
+				listvariable.AllowMultiple(false),
+				labelvalues.PrometheusLabelValues("component",
+					labelvalues.Matchers("component_health"),
+				),
+			),
+		),
+		withComponentsOverviewPanel(),
+		withComponentDetailsPanel(),
+	)
+}
+
+func newComponentHealthDashboard(namespace string) (*persesv1alpha2.PersesDashboard, error) {
+	builder, err := buildComponentHealthDashboard()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build component health dashboard: %w", err)
+	}
+
+	// Workaround because of type conflict between Perses plugin types and Perses fork in rhobs org
+	rhobsDashboard := persesv1.Dashboard{}
+	bytes, err := json.Marshal(builder.Dashboard)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal dashboard: %w", err)
+	}
+	err = rhobsDashboard.UnmarshalJSON(bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal dashboard: %w", err)
+	}
+
+	return &persesv1alpha2.PersesDashboard{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: persesv1alpha2.GroupVersion.String(),
+			Kind:       "PersesDashboard",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "component-health-dashboard",
+			Namespace: namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "observability-operator",
+			},
+		},
+		Spec: persesv1alpha2.PersesDashboardSpec{
+			Config: persesv1alpha2.Dashboard{
+				DashboardSpec: rhobsDashboard.Spec,
+			},
+		},
+	}, nil
 }
 
 // newComponentHealthConfig creates a new ConfigMap

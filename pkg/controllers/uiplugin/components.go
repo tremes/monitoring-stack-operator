@@ -147,6 +147,13 @@ func pluginComponentReconcilers(plugin *uiv1alpha1.UIPlugin, pluginInfo UIPlugin
 			reconciler.NewOptionalUpdater(newHealthAnalyzerServiceMonitor(namespace), plugin, deployHealthAnalyzer),
 		)
 
+		componentHealthDashboard, err := newComponentHealthDashboard(namespace)
+		if err != nil {
+			logger.Error(err, "Cannot build Component Health dashboard")
+		} else {
+			components = append(components, reconciler.NewOptionalUpdater(componentHealthDashboard, plugin, deployHealthAnalyzer))
+		}
+
 		persesServiceAccountName := "perses" + serviceAccountSuffix
 		persesEnabled := monitoringConfig != nil && monitoringConfig.Perses != nil && monitoringConfig.Perses.Enabled
 		components = append(components,
